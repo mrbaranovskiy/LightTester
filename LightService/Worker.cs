@@ -13,7 +13,7 @@ namespace LightService;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    const string token = "5793408907:AAFQ4-PDERRgmPwjMw4fhZwJiE8tdEjhOng";
+    const string token = "";
     
     private TelegramBotClient _botClient;
     private readonly CancellationTokenSource _cts = new();
