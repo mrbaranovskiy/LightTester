@@ -1,0 +1,9 @@
+[Bb]in
+[Dd]ebug*/
+.vs
+obj/
+[Rr]elease*/
+.idea
+.vscode
+*.user
+

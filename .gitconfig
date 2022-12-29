@@ -1,0 +1,41 @@
+[user]
+	name = Dmytro Baranovskyi
+	email = dmytro.o.baranovskyi@globallogic.com
+[credential "https://portal-ua.globallogic.com"]
+	provider = generic
+[alias]
+	com = commit -a -m
+	co = commit -m
+	stat = git show --stat
+	newbr = checkout -b
+	ch = checkout
+	amd = commit --amend --no-edit
+	ame = commit --amend -m
+	rfo = !git fetch origin && git rebase origin/master
+	st = status
+	adog = log --all --decorate --oneline --graph
+	ln = log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
+	amn = commit --amend --no-edit
+	howmuch = whatchanged -1 --format=oneline | wc -l
+	lg = log --pretty=oneline --no-abbrev-commit
+[diff]
+  tool = tortoisediff
+[difftool]
+  prompt = false
+[merge]
+  tool = tortoisemerge
+[mergetool]
+  prompt = false
+  keepBackup = false
+[difftool "tortoisediff"]
+  cmd = \""c:/Program Files/TortoiseGIT/bin/TortoiseGitMerge.exe"\" -mine "$REMOTE" -base "$LOCAL"
+[mergetool "tortoisemerge"]
+  cmd = \""c:/Program Files/TortoiseGIT/bin/TortoiseGitMerge.exe"\" -base "$BASE" -theirs "$REMOTE" -mine "$LOCAL" -merged "$MERGED"
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
+
+[core]
+	autocrlf = true
