@@ -14,7 +14,7 @@ namespace LightService;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    const string token = "";
+    const string token = "5891868682:AAH3MYRQXNTklgS2tk32aymNYpp8HxMv8sI";
 
     private TelegramBotClient _botClient;
     private readonly CancellationTokenSource _cts = new();
@@ -64,8 +64,15 @@ public class Worker : BackgroundService
 
         if (!File.Exists(_logDb))
         {
-            var str = File.Create(_logDb);
-            str.Close();
+            var file = File.CreateText(_logDb);
+            
+            if(await NetworkChecker.CheckNetworkAvailable())
+            {
+                var time = NetworkChecker.GetNetworkTime();
+                await file.WriteLineAsync($"{time:f}");
+            }
+
+            file.Close();
         }
     }
 
@@ -155,7 +162,7 @@ public class Worker : BackgroundService
             {
                 new KeyboardButton("Ping"),
                 new KeyboardButton("Statistics"),
-            },
+            }
         })
         {
             ResizeKeyboard = true,
@@ -230,11 +237,10 @@ public class Worker : BackgroundService
             
             var text = File.ReadAllLines(_logDb);
 
-            if (!text.Any()) return "";
+            if (!text.Any()) return "No data";
             
             var last10 = text.TakeLast(Math.Min(10, toTake));
             return last10.Aggregate((m, n) => m + Environment.NewLine + n);
-
         }
     }
 }
