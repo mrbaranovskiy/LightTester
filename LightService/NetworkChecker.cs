@@ -8,39 +8,44 @@ namespace LightTester;
 class NetworkChecker : IDisposable
 {
     private readonly ILogger<Worker> _logger;
-    public event EventHandler<LightState> OnStateChanged;
+    public event EventHandler<LightState> OnStateUpdated;
     private readonly Timer _timer;
     private int _failed = 0;
     
     public NetworkChecker(ILogger<Worker> logger)
     {
         _logger = logger;
-        _timer = new Timer(RunTimer, null, TimeSpan.FromMilliseconds(1000), TimeSpan.FromSeconds(10));
+        _timer = new Timer(RunTimer, null, TimeSpan.FromMilliseconds(5000), TimeSpan.FromSeconds(10));
     }
 
     private async void RunTimer(object? state)
     {
         try
-        { 
+        {
             var available = await CheckNetworkAvailable();
-            
-            if (available)
-            {
-                
-                if (_failed > 3) 
-                    OnStateChanged(this, new LightState(States.On, GetNetworkTime()));
 
-                _failed = 0;
-            }
-            else if(_failed == 3)
-            {
-                OnStateChanged(this, new LightState(States.Off, GetNetworkTime()));
-                _logger.LogWarning("Connection is lost!!!");
-            }
-            else
-            {
-                _failed++;
-            }
+            OnStateUpdated(this,
+                available
+                    ? new LightState(NetworkState.Online, GetNetworkTime())
+                    : new LightState(NetworkState.Off, DateTime.MinValue));
+
+            // if (available)
+            // {
+            //     
+            //     if (_failed > 3) 
+            //         OnStateChanged(this, new LightState(States.On, GetNetworkTime()));
+            //
+            //     _failed = 0;
+            // }
+            // else if(_failed == 3)
+            // {
+            //     OnStateChanged(this, new LightState(States.Off, GetNetworkTime()));
+            //     _logger.LogWarning("Connection is lost!!!");
+            // }
+            // else
+            // {
+            //     _failed++;
+            // }
         }
         catch (Exception e)
         {
@@ -50,7 +55,7 @@ class NetworkChecker : IDisposable
     }
     
       
-    private DateTime GetNetworkTime()
+    public static DateTime GetNetworkTime()
     {
 
         try

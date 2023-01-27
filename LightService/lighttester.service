@@ -1,0 +1,17 @@
+﻿[Unit]
+Description=Light checker servicwes
+
+After=syslog.target network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/projects/LightTester/LightService/bin/Debug/net6.0
+ExecStart=/root/dotnet/dotnet /home/projects/LightTester/LightService/bin/Debug/net6.0/LightTester.dll
+Restart=always
+KillMode=process
+RestartSec=30s
+StartLimitIntervalSec=10s
+StartLimitBurst=1
+
+[Install]
+WantedBy=multi-user.target

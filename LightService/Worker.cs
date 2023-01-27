@@ -7,6 +7,7 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
+using File = System.IO.File;
 
 namespace LightService;
 
@@ -14,13 +15,17 @@ public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     const string token = "";
-    
+
     private TelegramBotClient _botClient;
     private readonly CancellationTokenSource _cts = new();
     private NetworkChecker _networkChecker;
-    private readonly BehaviorSubject<LightState> _lastState = new BehaviorSubject<LightState>(new LightState(States.On, DateTime.Now));
     private User _currentUser;
     private IDisposable _eventSource;
+
+    private const string _timeFile = "lighter.time";
+    private const string _logDb = "logdb.db";
+
+    private static object _sync = new();
 
     public Worker(ILogger<Worker> logger)
     {
@@ -32,14 +37,10 @@ public class Worker : BackgroundService
         _logger.LogInformation("Start service");
         _botClient = new TelegramBotClient(token);
         _networkChecker = new NetworkChecker(_logger);
-        
+
         _eventSource = Observable.FromEventPattern<EventHandler<LightState>, LightState>(
-            hv => _networkChecker.OnStateChanged += hv,
-            hv => _networkChecker.OnStateChanged -= hv).Subscribe(s =>
-        {
-            RecordToDb(s.EventArgs);
-            _lastState.OnNext(s.EventArgs);
-        });
+            hv => _networkChecker.OnStateUpdated += hv,
+            hv => _networkChecker.OnStateUpdated -= hv).Subscribe(s => { HandleEventUpdate(this, s.EventArgs); });
 
         ReceiverOptions receiverOptions = new()
         {
@@ -56,6 +57,16 @@ public class Worker : BackgroundService
         _logger.LogInformation("Client init successfull");
         _currentUser = await _botClient.GetMeAsync(cancellationToken);
         _logger.LogInformation("Getting user and starting service/");
+
+        var networkTime = NetworkChecker.GetNetworkTime();
+        await using var streamWriter = File.CreateText(_timeFile);
+        streamWriter.Write(networkTime.ToFileTimeUtc());
+
+        if (!File.Exists(_logDb))
+        {
+            var str = File.Create(_logDb);
+            str.Close();
+        }
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
@@ -70,7 +81,7 @@ public class Worker : BackgroundService
         {
             Console.WriteLine(e);
         }
-      
+
         return base.StopAsync(cancellationToken);
     }
 
@@ -90,38 +101,45 @@ public class Worker : BackgroundService
 
         return Task.CompletedTask;
     }
-    
-    private string GetStatistics()
+
+    private static void HandleEventUpdate(Worker self, LightState state)
     {
-        return ReadFromDb().Aggregate((n, m) => n + Environment.NewLine + m);
+        lock (_sync)
+        {
+            var textData = File.ReadAllText(_timeFile);
+
+            if (!long.TryParse(textData, out var data) || state.NetworkState != NetworkState.Online) return;
+
+            var lastTimeUtc = DateTime.FromFileTimeUtc(data);
+            var internetTime = state.time;
+
+            if (internetTime - lastTimeUtc > TimeSpan.FromMinutes(1))
+            {
+                self.AddStatistics(internetTime);
+            }
+
+            using var sw = System.IO.File.CreateText(_timeFile);
+            sw.Write(state.time.ToFileTimeUtc());
+        }
     }
 
-    private List<string> ReadFromDb()
+    private void AddStatistics(DateTime time)
     {
         try
         {
-            using var fs = System.IO.File.OpenText("");
-            var buffer = new List<string>();
+            lock (_sync)
+            {
+                using var file = System.IO.File.AppendText(_logDb);
+                file.WriteLine($"{time:f}");
+            }
 
-            while (fs.ReadLine() is { } str)
-                buffer.Add(str);
-
-            return buffer.Count < 10 ? buffer : buffer.TakeLast(10).ToList();
+          
         }
         catch (Exception e)
         {
-            return new List<string>();
+            _logger.LogError(e.Message);
         }
     }
-
-    private static void RecordToDb(LightState state)
-    {
-        using var fs = System.IO.File.OpenWrite("");
-        using var sw = new StreamWriter(fs);
-        sw.WriteLine($"State {state.state} on {state.time:s}");
-    }
-  
-    
 
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
         CancellationToken cancellationToken)
@@ -140,29 +158,30 @@ public class Worker : BackgroundService
             },
         })
         {
-            ResizeKeyboard = true
+            ResizeKeyboard = true,
         };
 
         switch (message.Text)
         {
             case ButtonConstants.Ping:
             {
-                var result = await _lastState.FirstAsync();
-                var response = ResponseCheckLight(result.state, result.time);
+                var response = GetStatistics(false);
 
-                var sentMessage = await botClient.SendTextMessageAsync(
+                await botClient.SendTextMessageAsync(
                     chatId: chatId,
                     text: response,
                     replyMarkup: replyKeyboardMarkup,
                     cancellationToken: cancellationToken);
-
+                
                 break;
             }
             case ButtonConstants.Statistics:
             {
-                var sentMessage = await botClient.SendTextMessageAsync(
+                var stat = GetStatistics();
+
+                await botClient.SendTextMessageAsync(
                     chatId: chatId,
-                    text: "Not implemented",
+                    text: stat,
                     replyMarkup: replyKeyboardMarkup,
                     cancellationToken: cancellationToken);
                 break;
@@ -188,7 +207,8 @@ public class Worker : BackgroundService
         }
     }
 
-    private Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
+    private Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception,
+        CancellationToken cancellationToken)
     {
         var ErrorMessage = exception switch
         {
@@ -202,9 +222,19 @@ public class Worker : BackgroundService
     }
 
 
-    private string ResponseCheckLight(States state, DateTime time) => state switch
+    private string GetStatistics(bool takeAll = true)
     {
-        States.On => $"😊 since {time:f}",
-        States.Off => $"🕶 since {time:f}"
-    };
+        lock (_sync)
+        {
+            var toTake = takeAll ? 10 : 1;
+            
+            var text = File.ReadAllLines(_logDb);
+
+            if (!text.Any()) return "";
+            
+            var last10 = text.TakeLast(Math.Min(10, toTake));
+            return last10.Aggregate((m, n) => m + Environment.NewLine + n);
+
+        }
+    }
 }

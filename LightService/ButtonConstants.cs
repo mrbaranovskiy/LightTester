@@ -6,5 +6,5 @@ static class ButtonConstants
     public const string Statistics = "Statistics";
 }
 
-record LightState(States state, DateTime time);
-enum States { On, Off }
+record LightState(NetworkState NetworkState, DateTime time);
+enum NetworkState { Online, Off }

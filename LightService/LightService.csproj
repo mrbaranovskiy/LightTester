@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
     <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
+        <TargetFramework>net7.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <UserSecretsId>dotnet-LightService-ED37EFEE-57CB-40F7-AA7C-B3A2AB232762</UserSecretsId>
