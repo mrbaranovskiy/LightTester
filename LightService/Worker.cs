@@ -6,6 +6,7 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.InputFiles;
 using Telegram.Bot.Types.ReplyMarkups;
 using File = System.IO.File;
 
@@ -14,11 +15,11 @@ namespace LightService;
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
+    private readonly IFileService _service;
     const string token = "5891868682:AAH3MYRQXNTklgS2tk32aymNYpp8HxMv8sI";
 
     private TelegramBotClient _botClient;
     private readonly CancellationTokenSource _cts = new();
-    private NetworkChecker _networkChecker;
     private User _currentUser;
     private IDisposable _eventSource;
 
@@ -27,21 +28,18 @@ public class Worker : BackgroundService
 
     private static object _sync = new();
 
-    public Worker(ILogger<Worker> logger)
+    public Worker(ILogger<Worker> logger,
+        IFileService service)
     {
         _logger = logger;
+        _service = service;
     }
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Start service");
         _botClient = new TelegramBotClient(token);
-        _networkChecker = new NetworkChecker(_logger);
-
-        _eventSource = Observable.FromEventPattern<EventHandler<LightState>, LightState>(
-            hv => _networkChecker.OnStateUpdated += hv,
-            hv => _networkChecker.OnStateUpdated -= hv).Subscribe(s => { HandleEventUpdate(this, s.EventArgs); });
-
+        
         ReceiverOptions receiverOptions = new()
         {
             AllowedUpdates = Array.Empty<UpdateType>() // receive all update types
@@ -54,26 +52,8 @@ public class Worker : BackgroundService
             receiverOptions: receiverOptions,
             cancellationToken: _cts.Token
         );
-        _logger.LogInformation("Client init successfull");
+        _logger.LogInformation("Client init successful");
         _currentUser = await _botClient.GetMeAsync(cancellationToken);
-        _logger.LogInformation("Getting user and starting service/");
-
-        var networkTime = NetworkChecker.GetNetworkTime();
-        await using var streamWriter = File.CreateText(_timeFile);
-        streamWriter.Write(networkTime.ToFileTimeUtc());
-
-        if (!File.Exists(_logDb))
-        {
-            var file = File.CreateText(_logDb);
-            
-            if(await NetworkChecker.CheckNetworkAvailable())
-            {
-                var time = NetworkChecker.GetNetworkTime();
-                await file.WriteLineAsync($"{time:f}");
-            }
-
-            file.Close();
-        }
     }
 
     public override Task StopAsync(CancellationToken cancellationToken)
@@ -81,7 +61,6 @@ public class Worker : BackgroundService
         try
         {
             _logger.LogInformation("Disposing service");
-            _networkChecker?.Dispose();
             _eventSource.Dispose();
         }
         catch (Exception e)
@@ -109,45 +88,6 @@ public class Worker : BackgroundService
         return Task.CompletedTask;
     }
 
-    private static void HandleEventUpdate(Worker self, LightState state)
-    {
-        lock (_sync)
-        {
-            var textData = File.ReadAllText(_timeFile);
-
-            if (!long.TryParse(textData, out var data) || state.NetworkState != NetworkState.Online) return;
-
-            var lastTimeUtc = DateTime.FromFileTimeUtc(data);
-            var internetTime = state.time;
-
-            if (internetTime - lastTimeUtc > TimeSpan.FromMinutes(1))
-            {
-                self.AddStatistics(internetTime);
-            }
-
-            using var sw = System.IO.File.CreateText(_timeFile);
-            sw.Write(state.time.ToFileTimeUtc());
-        }
-    }
-
-    private void AddStatistics(DateTime time)
-    {
-        try
-        {
-            lock (_sync)
-            {
-                using var file = System.IO.File.AppendText(_logDb);
-                file.WriteLine($"{time:f}");
-            }
-
-          
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e.Message);
-        }
-    }
-
     private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update,
         CancellationToken cancellationToken)
     {
@@ -161,7 +101,6 @@ public class Worker : BackgroundService
             new[]
             {
                 new KeyboardButton("Ping"),
-                new KeyboardButton("Statistics"),
             }
         })
         {
@@ -172,25 +111,13 @@ public class Worker : BackgroundService
         {
             case ButtonConstants.Ping:
             {
-                var response = GetStatistics(false);
-
-                await botClient.SendTextMessageAsync(
+                var file = await _service.LoadFileFromServer();
+                InputOnlineFile photo = new InputMedia(new MemoryStream(file), "photo.png");
+                await botClient.SendPhotoAsync(
                     chatId: chatId,
-                    text: response,
-                    replyMarkup: replyKeyboardMarkup,
-                    cancellationToken: cancellationToken);
-                
-                break;
-            }
-            case ButtonConstants.Statistics:
-            {
-                var stat = GetStatistics();
+                    photo : photo, 
+                    cancellationToken : cancellationToken);
 
-                await botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: stat,
-                    replyMarkup: replyKeyboardMarkup,
-                    cancellationToken: cancellationToken);
                 break;
             }
             default:
