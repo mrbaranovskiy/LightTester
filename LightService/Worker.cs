@@ -96,23 +96,15 @@ public class Worker : BackgroundService
 
         var chatId = message.Chat.Id;
 
-        var replyKeyboardMarkup = new ReplyKeyboardMarkup(new[]
-        {
-            new[]
-            {
-                new KeyboardButton("Ping"),
-            }
-        })
-        {
-            ResizeKeyboard = true,
-        };
-
         switch (message.Text)
         {
-            case ButtonConstants.Ping:
+            case ButtonConstants.Cam0:
+            case ButtonConstants.Cam1:
             {
+                await _service.WriteServerCommand(message.Text);
                 var file = await _service.LoadFileFromServer();
                 InputOnlineFile photo = new InputMedia(new MemoryStream(file), "photo.png");
+                
                 await botClient.SendPhotoAsync(
                     chatId: chatId,
                     photo : photo, 
@@ -122,20 +114,6 @@ public class Worker : BackgroundService
             }
             default:
             {
-                var sentMessage = await botClient.SendTextMessageAsync(
-                    chatId: chatId,
-                    text: "Press the button.",
-                    replyMarkup: new ReplyKeyboardMarkup(new[]
-                    {
-                        new[]
-                        {
-                            new KeyboardButton("Ping"),
-                        },
-                    })
-                    {
-                        ResizeKeyboard = true
-                    },
-                    cancellationToken: cancellationToken);
                 break;
             }
         }
