@@ -1,6 +1,15 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Net.Sockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using LightTester;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -16,7 +25,7 @@ public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
     private readonly IFileService _service;
-    const string token = "5891868682:AAH3MYRQXNTklgS2tk32aymNYpp8HxMv8sI";
+    const string token = "";
 
     private TelegramBotClient _botClient;
     private readonly CancellationTokenSource _cts = new();
@@ -94,6 +103,7 @@ public class Worker : BackgroundService
         if (update.Message is not {Text: { }} message)
             return;
 
+        _logger.LogInformation($"Message {message.Text}");
         var chatId = message.Chat.Id;
 
         switch (message.Text)
@@ -101,16 +111,32 @@ public class Worker : BackgroundService
             case ButtonConstants.Cam0:
             case ButtonConstants.Cam1:
             {
-                await _service.WriteServerCommand(message.Text);
-                var file = await _service.LoadFileFromServer();
-                InputOnlineFile photo = new InputMedia(new MemoryStream(file), "photo.png");
-                
-                await botClient.SendPhotoAsync(
-                    chatId: chatId,
-                    photo : photo, 
-                    cancellationToken : cancellationToken);
 
-                break;
+                try
+                {
+                     // await _service.WriteServerCommand(message.Text);
+                     // var file = await _service.LoadFileFromServer();
+                     var client = new TcpClient("localhost", 31983);
+                     var networkStream = client.GetStream();
+                     await networkStream.WriteAsync(Encoding.UTF8.GetBytes(message.Text));
+
+                     var memorystream = new MemoryStream();
+                     await networkStream.CopyToAsync(memorystream, cancellationToken);
+                     memorystream.Seek(0, SeekOrigin.Begin);
+                     
+                     InputOnlineFile photo = new InputMedia(memorystream, "photo.png");
+                
+                    await botClient.SendPhotoAsync(
+                        chatId: chatId,
+                        photo : photo, 
+                        cancellationToken : cancellationToken);
+               
+                }
+                catch (System.Exception ex)
+                {
+                   _logger.LogInformation(ex.ToString());
+                }
+            break;    
             }
             default:
             {

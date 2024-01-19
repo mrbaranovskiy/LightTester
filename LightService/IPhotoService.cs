@@ -1,5 +1,10 @@
-﻿using System.Net.Sockets;
+﻿using System;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
+using System.Net.Sockets;
+using System.Threading.Tasks;
 
 namespace LightService 
 {
@@ -23,10 +28,10 @@ namespace LightService
         {
             try
             {
-                using TcpClient client = new TcpClient(_host, _port);
-                await using NetworkStream stream = client.GetStream();
-
-                using var ms = new MemoryStream();
+                TcpClient client = new TcpClient(_host, _port);
+                NetworkStream stream = client.GetStream();
+                var arr = new byte[1024 * 1024 * 5];
+                var ms = new MemoryStream(arr);
                 await stream.CopyToAsync(ms);
 
                 return ms.ToArray();

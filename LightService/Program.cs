@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
 using LightService;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 /*
 import socket
@@ -35,7 +37,7 @@ var builder = Host.CreateDefaultBuilder(args);
 builder.ConfigureServices(s =>
 {
     s.AddSingleton<IFileService, FileService>(
-        _ => new FileService("localhost", 4343));
+        _ => new FileService("localhost", 31983));
 });
 
 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) builder = builder.UseSystemd();
